@@ -1,73 +1,278 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="200" alt="Nest Logo" /></a>
-</p>
+Here I will be documenting how to deploy your nest application to AWS lambda. We will be building cloudformation stack using AWS cdk.
+All code can be found in GitHub repository and it will be maintained and updated as per time: [github-repository](https://github.com/singh-taranjeet/nest-aws-lambda)
+So follow the steps as following:
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+## Create seperate directories for nest and cdk applicaiton.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://coveralls.io/github/nestjs/nest?branch=master" target="_blank"><img src="https://coveralls.io/repos/github/nestjs/nest/badge.svg?branch=master#9" alt="Coverage" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+Create seperate directories to hold nestJS application and CDK application.
 
-## Description
+**_app_** directory for nestJS application
+**_cdk_** directory for building cloudformation stack
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+![app and cdk directories](https://dev-to-uploads.s3.amazonaws.com/uploads/articles/1zjc430qxfgtx4dv1sgw.png)
 
-## Installation
+## Setup nestjs application
 
-```bash
-$ npm install
+Now change directory to **app** and install nestjs cli and setup the application in app directory as shown below:
+
+You can follow setup details on nestJS docs [here](https://docs.nestjs.com/first-steps):
+
+```
+npm i -g @nestjs/cli
+nest new nests-aws-lambda
 ```
 
-## Running the app
+check if the application is running by running following command:
 
-```bash
-# development
-$ npm run start
-
-# watch mode
-$ npm run start:dev
-
-# production mode
-$ npm run start:prod
+```
+npm run start:dev
 ```
 
-## Test
+### Note:
 
-```bash
-# unit tests
-$ npm run test
+Please make sure you install `class-transformer` and `class-validator` if you get errors.
 
-# e2e tests
-$ npm run test:e2e
+## Initialise the CDK application
 
-# test coverage
-$ npm run test:cov
+If you have not install aws-cdk already install by following commands:
+
+```
+npm install -g aws-cdk
 ```
 
-## Support
+Now we will be using code as infrastructure to build our cloudformation stack. So initialise the cdk application in **cdk** directory using following command:
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
+```
+cdk init --language typescript
+```
 
-## Stay in touch
+`cdk init` command will create some important files in the application as shown below:
 
-- Author - [Kamil Myśliwiec](https://kamilmysliwiec.com)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
+`cdk/lib/cdk-stack.ts` Main entry point for the application
+`cdk/bin/cdk.ts` Defines the service stack
 
-## License
+To check if everything is fine run the following command to check if application is able to create a cloudformation template from our code.
 
-Nest is [MIT licensed](LICENSE).
+```
+cdk synth
+```
+
+You should be able to see output on the screen as below:
+
+```
+Resources:
+  CDKMetadata:
+    Type: AWS::CDK::Metadata
+    Properties:
+      ...
+
+```
+
+## Create lambda handler for nestjs application
+
+The major part of this deployment is creating a lambda handler function which will start our nest application.
+
+To do that we need to install `@vendia/serverless-express`
+
+```
+npm i --save @vendia/serverless-express
+```
+
+We will be using `@vendia/serverless-express` to create a serverless express application. You can read more about `@codegenie/serverless-express` [here](https://www.npmjs.com/package/@vendia/serverless-express)
+
+create a new file `lambda.bootstrap.ts` in root of src directory. (app/src/bootstrap.lambda.ts)
+
+Paste the following content in the file:
+
+```
+import { NestFactory } from '@nestjs/core';
+import * as express from 'express';
+import * as serverlessExpress from '@codegenie/serverless-express';
+import { ExpressAdapter } from '@nestjs/platform-express';
+import { INestApplication } from '@nestjs/common';
+import { AppModule } from './app.module';
+
+let cachedServer: any;
+
+export const bootstrapLambda = async (
+  attachPipes: (app: INestApplication<any>) => void,
+) => {
+  if (!cachedServer) {
+    // create an express app
+    const expressApp = express();
+
+    // create an express adapter to work with nest applicaiton
+    const expressAdapter = new ExpressAdapter(expressApp);
+
+    // create a nest app using the express adapter
+    const nestApp = await NestFactory.create(AppModule, expressAdapter);
+    nestApp.enableCors();
+
+    // configure nest application
+    attachPipes(nestApp);
+
+    // wait for the nest to initialise
+    await nestApp.init();
+
+    // create a serverless server using serverless express
+    cachedServer = serverlessExpress.configure({ app: expressApp });
+
+    return cachedServer;
+  }
+
+  return cachedServer;
+};
+
+
+```
+
+Now update file called `main.ts` with following code:
+
+```
+import { NestFactory } from '@nestjs/core';
+import { AppModule } from './app.module';
+import { INestApplication, ValidationPipe } from '@nestjs/common';
+import { bootstrapLambda } from './lambda.bootstrap';
+
+function attachPipes(app: INestApplication<any>) {
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true,
+      transform: true,
+      forbidNonWhitelisted: true,
+    }),
+  );
+  app.enableCors();
+}
+
+if (process.env.NODE_ENV === 'local') {
+  async function bootstrap() {
+    const app = await NestFactory.create(AppModule);
+    attachPipes(app);
+    await app.listen(3000);
+  }
+
+  bootstrap();
+}
+
+const handler = async (event: any, context: any, callback: any) => {
+  console.log('Event', event);
+  const server = await bootstrapLambda(attachPipes);
+  return server(event, context, callback);
+};
+
+module.exports.handler = handler;
+
+
+```
+
+## Create a Docker file for lambda function
+
+Since size of our application will be much more than the lambda function limit. We will be creating docker image as code of the lambda function.
+
+create a docker file in the root of app directory with following code:
+
+```
+FROM amazon/aws-lambda-nodejs
+
+COPY . .
+RUN npm install
+RUN npm run build
+
+CMD ["dist/main.handler"]
+```
+
+Now our nestjs application configuration is complete.
+
+## Create cloudformation template using AWS CDK
+
+ow change directory to `cdk/lib/cdk-stack.ts` and add following code:
+
+```
+import * as cdk from "aws-cdk-lib";
+import { LambdaIntegration, RestApi } from "aws-cdk-lib/aws-apigateway";
+import { DockerImageCode, DockerImageFunction } from "aws-cdk-lib/aws-lambda";
+import { Construct } from "constructs";
+import * as logs from "aws-cdk-lib/aws-logs";
+import path = require("path");
+
+export class CdkStack extends cdk.Stack {
+  constructor(scope: Construct, id: string, props?: cdk.StackProps) {
+    super(scope, id, props);
+
+    // Create a new lambda function
+    const LambdaHandler = new DockerImageFunction(this, "LambdaHandler", {
+      timeout: cdk.Duration.seconds(30),
+      functionName: "LambdaHandler",
+      code: DockerImageCode.fromImageAsset(path.join(__dirname, "../../app")),
+    });
+
+    // Create a new Log Group and Log Stream for the Lambda function
+    new logs.LogGroup(this, "LambdaHandlerLogGroup", {
+      logGroupName: `/aws/lambda/${LambdaHandler.functionName}`,
+      retention: logs.RetentionDays.ONE_WEEK,
+    });
+
+    // Create a new api gateway
+    const api = new RestApi(this, "ApiRest", {
+      restApiName: "ApiRest",
+      deploy: true,
+      defaultMethodOptions: {
+        apiKeyRequired: true,
+      },
+    });
+
+    // add proxy resource to handle all api requests
+    api.root.addProxy({
+      defaultIntegration: new LambdaIntegration(LambdaHandler, {
+        proxy: true,
+      }),
+    });
+
+    //add api key to enable monitoring
+    const apiKey = api.addApiKey("ApiKey");
+    const usagePlan = api.addUsagePlan("ApiUsagePlan", {
+      name: "ApiUsagePlan",
+      apiStages: [
+        {
+          api,
+          stage: api.deploymentStage,
+        },
+      ],
+    });
+
+    // // add the api key to the usage plan
+    usagePlan.addApiKey(apiKey);
+
+    // add the api key to the output
+    new cdk.CfnOutput(this, "api-key", {
+      value: apiKey.keyId,
+      exportName: `keyId`,
+    });
+  }
+}
+
+
+```
+
+## Deploy application to AWS
+
+Install aws cli using following documentation as per you operating system [here](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html)
+
+Mac OS users can download GUI installer from following [link](https://awscli.amazonaws.com/AWSCLIV2.pkg)
+
+After installing aws-cli configure AWS CLI using following command:
+
+```
+aws configure
+```
+
+Make sure your docker application is running and change directory to **cdk**
+
+Run `cdk synth` to check if the cdk code is working.
+
+To deploy application simple run following command:
+
+```
+cdk deploy
+```
