@@ -25,6 +25,7 @@ if (process.env.NODE_ENV === 'local') {
 }
 
 const handler = async (event: any, context: any, callback: any) => {
+  console.log('Event', event);
   const server = await bootstrapLambda(attachPipes);
   return server(event, context, callback);
 };
